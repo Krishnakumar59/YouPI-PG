@@ -16,9 +16,9 @@ import java.util.regex.Pattern;
 public class BankSmsFilter {
     private static final String TAG = "BankSmsFilter";
 
-    // Standard TRAI Indian Institutional Sender pattern (e.g. VK-HDFCBK, AX-SBIINB, BZ-ICICIB, VM-AXISBK, or HDFCBK)
+    // Standard Institutional Banking / Wallet Sender pattern (e.g. VK-HDFCBK, AX-SBIINB, eSewa, Khalti, Fonepay, NIC_ASIA, NABIL)
     private static final Pattern INSTITUTIONAL_SENDER_PATTERN = Pattern.compile(
-        "^(?:[A-Za-z]{2}-)?([A-Za-z0-9]{3,9})$"
+        "^(?:[A-Za-z]{2}-)?([A-Za-z0-9_]{3,15})$"
     );
 
     // Pure numeric sender pattern (mobile phone numbers, international prefixes)
@@ -28,7 +28,7 @@ public class BankSmsFilter {
 
     // Inbound Credit / Deposit keywords
     private static final Pattern CREDIT_KEYWORD_PATTERN = Pattern.compile(
-        "(?:credited|received|deposit(?:ed)?|payment\\s+received|transferred\\s+to\\s+your|has\\s+transferred|deposited\\s+in|cr\\b|upi\\s+credit)",
+        "(?:credited|received|deposit(?:ed)?|payment\\s+received|transferred\\s+to\\s+your|has\\s+transferred|deposited\\s+in|cr\\b|upi\\s+credit|fonepay|esewa|khalti)",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -38,15 +38,15 @@ public class BankSmsFilter {
         Pattern.CASE_INSENSITIVE
     );
 
-    // Monetary Amount pattern (e.g., Rs. 500.00, INR 1,250, ₹ 200.50)
+    // Monetary Amount pattern (e.g., Rs. 500.00, NPR 500, INR 1,250, ₹ 200.50)
     private static final Pattern AMOUNT_PATTERN = Pattern.compile(
-        "(?:Rs\\.?|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)",
+        "(?:Rs\\.?|NPR|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)",
         Pattern.CASE_INSENSITIVE
     );
 
-    // 12-digit UPI Transaction Reference (UTR)
+    // Transaction Reference (UTR / Trace ID / Ref No)
     private static final Pattern UTR_PATTERN = Pattern.compile(
-        "(?:UPI\\s*(?:ref|reference|txn|id)?|Ref(?:erence)?\\s*(?:no|number)?|UTR|IMPS\\s*Ref)\\s*[:#-]?\\s*([0-9]{12})",
+        "(?:UPI\\s*(?:ref|reference|txn|id)?|Trace(?:\\s*(?:id|no|#))?|Ref(?:erence)?\\s*(?:no|number)?|UTR|IMPS\\s*Ref|Txn\\s*(?:id|#)?|Fonepay\\s*(?:ref|trace)?)\\s*[:#-]?\\s*([a-zA-Z0-9\\-_]{6,35})",
         Pattern.CASE_INSENSITIVE
     );
 

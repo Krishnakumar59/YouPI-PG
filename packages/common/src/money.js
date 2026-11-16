@@ -60,3 +60,26 @@ export function toRupeesString(paise) {
 export function formatINR(paise) {
   return `₹${toRupeesString(paise)}`;
 }
+
+/**
+ * Formats integer paise into a localized Nepali Rupee (NPR) display string ("Rs. 200.00").
+ * @param {bigint | number} paise
+ * @returns {string}
+ */
+export function formatNPR(paise) {
+  return `Rs. ${toRupeesString(paise)}`;
+}
+
+/**
+ * Formats integer paise into a localized currency string based on ISO currency code.
+ * @param {bigint | number} paise
+ * @param {string} [currency='INR']
+ * @returns {string}
+ */
+export function formatCurrency(paise, currency = 'INR') {
+  const c = String(currency || 'INR').trim().toUpperCase();
+  if (c === 'NPR') {
+    return formatNPR(paise);
+  }
+  return formatINR(paise);
+}

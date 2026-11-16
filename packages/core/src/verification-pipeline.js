@@ -494,15 +494,15 @@ export class PaymentVerificationPipeline {
       });
     }
 
-    // Invariant 2: Check Indian currency indicator (Rs, Rs., ₹, or INR)
-    const currencyKeywords = /(?:\b(?:rs\.?|inr)\b|₹|(?:rs\.?|inr|₹)\s*\d|\d\s*(?:rs\.?|inr|₹))/i;
+    // Invariant 2: Check Indian/Nepali currency indicator (Rs, Rs., ₹, INR, or NPR)
+    const currencyKeywords = /(?:\b(?:rs\.?|inr|npr)\b|₹|(?:rs\.?|inr|npr|₹)\s*\d|\d\s*(?:rs\.?|inr|npr|₹))/i;
     if (!currencyKeywords.test(rawText)) {
       stage3 = {
         stage: 3,
         name: 'PARSER',
         status: 'FAILED',
         reason: 'MISSING_CURRENCY_INDICATOR',
-        details: 'Message lacks required Indian currency indicator (Rs, Rs., ₹, or INR).'
+        details: 'Message lacks required currency indicator (Rs, Rs., ₹, INR, or NPR).'
       };
       return buildResult({
         finalStatus: 'REJECTED',
@@ -515,14 +515,20 @@ export class PaymentVerificationPipeline {
       });
     }
 
-    // Invariant 3: Check 12-digit reference (UTR / RRN)
+    // Invariant 3: Check reference (12-digit UTR for UPI, or Trace/Ref for Nepal Fonepay/Wallets)
     let bankRef = input.bankReferenceNumber || input.utr || null;
     if (!bankRef) {
-      const ref12Patterns = [
-        /(?:upi\s*ref(?:erence)?\s*(?:no\.?|num)?|utr(?:\s*no\.?)?|rrn(?:\s*no\.?)?|txn\s*(?:id|ref)?|ref\s*no\.?)[\s:=-]+([0-9]{12})\b/i,
-        /(?:ref\s*no\.?)?[\s:#=-]+([0-9]{12})\b/i,
-        /\b([0-9]{12})\b/
-      ];
+      const isNepalContext = /npr/i.test(rawText) || /(?:fonepay|esewa|khalti|nabil|nic_asia|global_ime|sanima|everest)/i.test(sender || '') || /(?:fonepay|esewa|khalti)/i.test(rawText);
+      const ref12Patterns = isNepalContext
+        ? [
+            /(?:trace\s*(?:id|no\.?|#)?|fonepay\s*(?:ref|trace)?|esewa\s*txn\s*id|khalti\s*txn\s*id|fpp(?:\s*id)?|ref\s*(?:no\.?|id|#)?|txn\s*(?:id|ref)?)[\s:=-]+([a-zA-Z0-9\-_]{6,35})\b/i,
+            /\b([0-9]{8,12})\b/
+          ]
+        : [
+            /(?:upi\s*ref(?:erence)?\s*(?:no\.?|num)?|utr(?:\s*no\.?)?|rrn(?:\s*no\.?)?|txn\s*(?:id|ref)?|ref\s*no\.?)[\s:=-]+([0-9]{12})\b/i,
+            /(?:ref\s*no\.?)?[\s:#=-]+([0-9]{12})\b/i,
+            /\b([0-9]{12})\b/
+          ];
       for (const pat of ref12Patterns) {
         const match = rawText.match(pat);
         if (match && match[1]) {
@@ -907,7 +913,7 @@ export class PaymentVerificationPipeline {
       isNotLegitimateBank = !isValidSenderCode || isAttributableToCustomer;
     } else if (source === 'GMAIL') {
       const senderDomain = sender.includes('@') ? sender.split('@')[1]?.toLowerCase().trim() : sender.toLowerCase().trim();
-      const isBankDomain = senderDomain.endsWith('.bank.in') || senderDomain === 'bank.in' || sender === 'TEST' || senderDomain === 'hdfcbank.net';
+      const isBankDomain = senderDomain.endsWith('.bank.in') || senderDomain === 'bank.in' || sender === 'TEST' || senderDomain === 'hdfcbank.net' || senderDomain.endsWith('.com.np') || senderDomain === 'esewa.com.np' || senderDomain === 'khalti.com';
       isNotLegitimateBank = !isBankDomain || isAttributableToCustomer;
     } else {
       isNotLegitimateBank = true;

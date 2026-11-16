@@ -6,6 +6,8 @@ import {
   toPaise,
   toRupeesString,
   formatINR,
+  formatNPR,
+  formatCurrency,
   encrypt,
   decrypt,
   generateHmac,
@@ -45,12 +47,17 @@ describe('@youpi/common Unit Tests', () => {
       assert.throws(() => toPaise(NaN), /Invalid monetary amount/);
     });
 
-    test('formats paise into standard decimal string and INR symbol', () => {
+    test('formats paise into standard decimal string, INR and NPR symbols', () => {
       assert.equal(toRupeesString(20000n), '200.00');
       assert.equal(toRupeesString(50n), '0.50');
       assert.equal(toRupeesString(5n), '0.05');
       assert.equal(formatINR(20000n), '₹200.00');
       assert.equal(formatINR(19999n), '₹199.99');
+      assert.equal(formatNPR(20000n), 'Rs. 200.00');
+      assert.equal(formatNPR(19999n), 'Rs. 199.99');
+      assert.equal(formatCurrency(20000n, 'NPR'), 'Rs. 200.00');
+      assert.equal(formatCurrency(20000n, 'INR'), '₹200.00');
+      assert.equal(formatCurrency(20000n), '₹200.00');
     });
   });
 

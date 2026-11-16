@@ -19,6 +19,7 @@ const testFiles = [
   'packages/core/src/__tests__/webhook-engine.test.js',
 'packages/core/src/__tests__/webhook-outbox-outcomes.test.js',
   'packages/core/src/__tests__/webhook-outbox-durability.test.js',
+  'packages/core/src/__tests__/nepal-bank-sms-parser.test.js',
   'packages/core/src/__tests__/statement-reconciliation.test.js',
   'packages/merchant-sdk/src/__tests__/merchant-sdk.test.js',
   'packages/merchant-sdk/src/__tests__/youpi-universal-integration.test.js',
