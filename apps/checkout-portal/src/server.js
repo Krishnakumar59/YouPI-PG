@@ -530,7 +530,7 @@ export class CheckoutServer {
         if (customImageSvg) {
           svg = customImageSvg;
         } else {
-          let customQrText = (process.env.CUSTOM_QR_STRING || process.env.CONNECTIPS_QR_STRING || '').trim();
+          let customQrText = (state?.customQrString || process.env.CUSTOM_QR_STRING || process.env.CONNECTIPS_QR_STRING || '').trim();
           if (!customQrText) {
             const txtPath = path.resolve(__dirname, '../../../data/custom-qr.txt');
             if (fs.existsSync(txtPath)) {

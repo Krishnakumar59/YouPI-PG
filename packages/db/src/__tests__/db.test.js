@@ -339,6 +339,214 @@ describe('@youpi/db Unit & Integration Tests', () => {
       legacyDb.close();
     });
   });
+
+  describe('Receiving Account Daily Limit & Failover Auto-Rotation', () => {
+    test('creates and maps account with daily limit, priority, and custom QR payload', () => {
+      const acc = accountRepo.create({
+        merchantId: testMerchant.id,
+        upiId: 'esewa-wallet-1@esewa',
+        payeeName: 'Primary eSewa',
+        dailyTransactionLimit: 50,
+        priority: 10,
+        customQrString: '000201010212...connectips...payload',
+        isActive: false
+      });
+
+      assert.equal(acc.upiId, 'esewa-wallet-1@esewa');
+      assert.equal(acc.payeeName, 'Primary eSewa');
+      assert.equal(acc.dailyTransactionLimit, 50);
+      assert.equal(acc.priority, 10);
+      assert.equal(acc.customQrString, '000201010212...connectips...payload');
+      assert.equal(acc.isActive, false);
+
+      const fetched = accountRepo.findById(acc.id);
+      assert.equal(fetched.dailyTransactionLimit, 50);
+      assert.equal(fetched.priority, 10);
+      assert.equal(fetched.customQrString, '000201010212...connectips...payload');
+
+      // Update account
+      const updated = accountRepo.updateAccount(acc.id, {
+        dailyTransactionLimit: 30,
+        priority: 5,
+        customQrString: 'updated-qr'
+      });
+      assert.equal(updated.dailyTransactionLimit, 30);
+      assert.equal(updated.priority, 5);
+      assert.equal(updated.customQrString, 'updated-qr');
+    });
+
+    test('counts completed transactions today accurately', () => {
+      const acc = accountRepo.create({
+        merchantId: testMerchant.id,
+        upiId: 'khalti-wallet@khalti',
+        payeeName: 'Khalti Pool',
+        dailyTransactionLimit: 50,
+        isActive: false
+      });
+
+      assert.equal(accountRepo.getTodayCompletedCount(acc.id), 0);
+
+      // Create a completed session today
+      const s1 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: acc.id,
+        orderId: 'ROT-ORD-1',
+        amountPaise: 50000
+      });
+      db.execute(
+        "UPDATE payment_sessions SET status = 'SUCCESS', completed_at = datetime('now') WHERE id = ?",
+        [s1.id]
+      );
+
+      // Create an observed success session today
+      const s2 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: acc.id,
+        orderId: 'ROT-ORD-2',
+        amountPaise: 25000
+      });
+      db.execute(
+        "UPDATE payment_sessions SET status = 'OBSERVED_SUCCESS', completed_at = datetime('now') WHERE id = ?",
+        [s2.id]
+      );
+
+      // Create an incomplete/active session (should NOT count)
+      const s3 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: acc.id,
+        orderId: 'ROT-ORD-3',
+        amountPaise: 10000
+      });
+      db.execute("UPDATE payment_sessions SET status = 'ACTIVE' WHERE id = ?", [s3.id]);
+
+      // Create a completed session from yesterday (should NOT count towards today)
+      const s4 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: acc.id,
+        orderId: 'ROT-ORD-4',
+        amountPaise: 15000
+      });
+      db.execute(
+        "UPDATE payment_sessions SET status = 'SUCCESS', completed_at = datetime('now', '-1 day') WHERE id = ?",
+        [s4.id]
+      );
+
+      assert.equal(accountRepo.getTodayCompletedCount(acc.id), 2);
+
+      const status = accountRepo.getAccountLimitStatus(acc.id);
+      assert.equal(status.limit, 50);
+      assert.equal(status.completedToday, 2);
+      assert.equal(status.remaining, 48);
+      assert.equal(status.isExhausted, false);
+    });
+
+    test('findOrRotateActiveAccount auto-rotates to standby account when daily limit is reached', () => {
+      // Deactivate any existing active accounts
+      accountRepo.deactivateAccount(testMerchant.id, testAccount.id);
+
+      // Create Primary Account with limit of 2, priority 10
+      const primary = accountRepo.create({
+        merchantId: testMerchant.id,
+        upiId: 'esewa-primary@esewa',
+        payeeName: 'Primary eSewa',
+        dailyTransactionLimit: 2,
+        priority: 10,
+        isActive: true
+      });
+
+      // Create Secondary Account with limit of 50, priority 5
+      const secondary = accountRepo.create({
+        merchantId: testMerchant.id,
+        upiId: 'esewa-secondary@esewa',
+        payeeName: 'Secondary eSewa',
+        dailyTransactionLimit: 50,
+        priority: 5,
+        isActive: false
+      });
+
+      // Initially, active is primary
+      let current = accountRepo.findOrRotateActiveAccount(testMerchant.id);
+      assert.equal(current.id, primary.id);
+      assert.equal(current.isActive, true);
+
+      // Complete 1 transaction on primary
+      const s1 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: primary.id,
+        orderId: 'ROT-ORD-11',
+        amountPaise: 10000
+      });
+      db.execute(
+        "UPDATE payment_sessions SET status = 'SUCCESS', completed_at = datetime('now') WHERE id = ?",
+        [s1.id]
+      );
+
+      // 1 / 2 completed: primary should still be active
+      current = accountRepo.findOrRotateActiveAccount(testMerchant.id);
+      assert.equal(current.id, primary.id);
+
+      // Complete 2nd transaction on primary (reaches daily limit of 2!)
+      const s2 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: primary.id,
+        orderId: 'ROT-ORD-12',
+        amountPaise: 10000
+      });
+      db.execute(
+        "UPDATE payment_sessions SET status = 'SUCCESS', completed_at = datetime('now') WHERE id = ?",
+        [s2.id]
+      );
+
+      // Now 2 / 2 completed on primary: next resolution must auto-rotate to secondary!
+      current = accountRepo.findOrRotateActiveAccount(testMerchant.id);
+      assert.equal(current.id, secondary.id, 'Must automatically rotate to secondary account');
+      assert.equal(current.isActive, true);
+
+      // Verify primary is now deactivated in DB and secondary is activated
+      const reloadedPrimary = accountRepo.findById(primary.id);
+      const reloadedSecondary = accountRepo.findById(secondary.id);
+      assert.equal(reloadedPrimary.isActive, false);
+      assert.equal(reloadedSecondary.isActive, true);
+    });
+
+    test('respects priority order during rotation', () => {
+      // Create Account A (priority 1, limit 1) and Account B (priority 20, limit 1)
+      const accA = accountRepo.create({
+        merchantId: testMerchant.id,
+        upiId: 'low-prio@upi',
+        payeeName: 'Low Priority',
+        dailyTransactionLimit: 1,
+        priority: 1,
+        isActive: true
+      });
+
+      const accB = accountRepo.create({
+        merchantId: testMerchant.id,
+        upiId: 'high-prio@upi',
+        payeeName: 'High Priority',
+        dailyTransactionLimit: 50,
+        priority: 20,
+        isActive: false
+      });
+
+      // Exhaust accA
+      const s1 = sessionRepo.create({
+        merchantId: testMerchant.id,
+        receivingAccountId: accA.id,
+        orderId: 'ROT-ORD-21',
+        amountPaise: 10000
+      });
+      db.execute(
+        "UPDATE payment_sessions SET status = 'SUCCESS', completed_at = datetime('now') WHERE id = ?",
+        [s1.id]
+      );
+
+      // Auto-rotation must select accB due to higher priority
+      const selected = accountRepo.findOrRotateActiveAccount(testMerchant.id);
+      assert.equal(selected.id, accB.id);
+      assert.equal(selected.isActive, true);
+    });
+  });
 });
 
 describe('Database transaction recovery after writer contention', () => {

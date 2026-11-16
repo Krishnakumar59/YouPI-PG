@@ -124,3 +124,37 @@ curl -X POST http://localhost:6100/api/v1/pollers/events \
     "rawText": "Your A/C ...1234 has been credited with NPR 1,200.00 on 16-Nov-2026 by Fonepay. Ref: FP99881122."
   }'
 ```
+
+---
+
+## 6. Account Pooling & 50 Daily Limit Auto-Rotation (Single Phone Solution)
+
+### The 50 Payments/Day Hurdle in Nepal
+In Nepal, personal wallets (eSewa, Khalti) and personal bank accounts are restricted by NRB / provider rules to a maximum number of incoming P2P transfers per day (typically **50 transactions per calendar day** for personal accounts) before blocking incoming credits or demanding merchant verification.
+
+### Sovereign Multi-Account Pooling on ONE Device
+YOUPI PG solves this hurdle without requiring multiple physical phones:
+- A single Android phone can have multiple apps installed simultaneously (e.g. eSewa personal, Khalti personal, Fonepay, mobile banking apps).
+- The phone receives notifications and SMS for all of them into the unified Android Notification Listener and SMS inbox.
+- YOUPI PG maintains an **Account Pool** in the database with automated, atomic rotation.
+
+### How It Works:
+1. **Configured Daily Limit**: Each receiving account has a `daily_transaction_limit` (default: `50`, set to `0` for unlimited).
+2. **Priority Tiers**: Each account has a `priority` number (higher priority accounts are selected first).
+3. **Per-Account Custom QR**: Each account can have its own `custom_qr_string` (raw ConnectIPS EMVCo QR payload or specific wallet QR string).
+4. **Automatic Daily Failover**:
+   - When Account A processes its 50th completed transaction today, it reaches its daily threshold.
+   - On the very next checkout session creation, YOUPI PG automatically queries the merchant pool, locates the next enabled account with capacity today (Account B), and atomically activates it.
+   - Customers immediately see Account B's dynamic QR code and VPA.
+   - At midnight UTC/local date rollover, the daily counters reset automatically.
+
+### Adding Pooled Accounts via Merchant Admin:
+1. Navigate to **Merchant Admin** (`http://localhost:6001`) ➔ **Settings** ➔ **Receiving Accounts**.
+2. Under **Add New Receiving Account**:
+   - **UPI ID / Wallet ID**: e.g., `9801234567@esewa` or `9841234567@khalti`
+   - **Daily Limit**: `50` (or your preferred safety margin, e.g. `48`)
+   - **Rotation Priority**: e.g., `10` for primary, `5` for secondary
+   - **Custom QR String**: (Optional) Paste raw EMVCo ConnectIPS or wallet QR string
+3. Click **Save & Add Account**.
+4. Both accounts are monitored seamlessly by the single observer device!
+

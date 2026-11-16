@@ -503,24 +503,36 @@ export function registerAdminRoutes(server, ctx) {
 
     const accounts = ctx.accountRepo.findByMerchantId(merchant.id);
     HttpServer.json(res, 200, {
-      accounts: accounts.map(a => ({
-        id: a.id,
-        merchantId: a.merchantId,
-        upiId: a.upiId,
-        payeeName: a.payeeName,
-        isMerchantEnabled: a.isMerchantEnabled,
-        isActive: a.isActive,
-        isSlotBusy: a.isSlotBusy,
-        createdAt: a.createdAt,
-        updatedAt: a.updatedAt
-      }))
+      accounts: accounts.map(a => {
+        const completedToday = ctx.accountRepo.getTodayCompletedCount ? ctx.accountRepo.getTodayCompletedCount(a.id) : 0;
+        const dailyLimit = a.dailyTransactionLimit !== undefined ? a.dailyTransactionLimit : 50;
+        const remainingToday = dailyLimit > 0 ? Math.max(0, dailyLimit - completedToday) : null;
+        const isExhausted = dailyLimit > 0 && completedToday >= dailyLimit;
+        return {
+          id: a.id,
+          merchantId: a.merchantId,
+          upiId: a.upiId,
+          payeeName: a.payeeName,
+          isMerchantEnabled: a.isMerchantEnabled,
+          isActive: a.isActive,
+          isSlotBusy: a.isSlotBusy,
+          dailyTransactionLimit: dailyLimit,
+          priority: a.priority || 0,
+          customQrString: a.customQrString || null,
+          completedToday,
+          remainingToday,
+          isExhausted,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt
+        };
+      })
     });
   });
 
   // POST /api/v1/admin/upi-accounts (Add a new VPA)
   server.post('/api/v1/admin/upi-accounts', async (req, res) => {
     const body = await HttpServer.parseBody(req);
-    const { upiId, payeeName, isActive } = body;
+    const { upiId, payeeName, isActive, dailyTransactionLimit, priority, customQrString } = body;
     let merchant = resolveMerchant(req, body.merchantId);
 
     if (!merchant) {
@@ -533,8 +545,9 @@ export function registerAdminRoutes(server, ctx) {
       return;
     }
 
-    if (!isValidVpa(upiId.trim())) {
-      HttpServer.json(res, 400, { error: `Invalid UPI VPA format: "${upiId}". Expected: username@bank` });
+    const hasCustomQr = Boolean(customQrString && String(customQrString).trim());
+    if (!isValidVpa(upiId.trim()) && !hasCustomQr && !/^[a-zA-Z0-9.\-_]{2,256}(@[a-zA-Z0-9.\-_]{2,64})?$/.test(upiId.trim())) {
+      HttpServer.json(res, 400, { error: `Invalid UPI VPA format: "${upiId}". Expected: username@bank or wallet ID` });
       return;
     }
 
@@ -546,7 +559,10 @@ export function registerAdminRoutes(server, ctx) {
       upiId: upiId.trim(),
       payeeName: payeeName?.trim() || merchant.businessName,
       isMerchantEnabled: true,
-      isActive: shouldActivate
+      isActive: shouldActivate,
+      dailyTransactionLimit: dailyTransactionLimit !== undefined ? Number(dailyTransactionLimit) : 50,
+      priority: priority !== undefined ? Number(priority) : 0,
+      customQrString: customQrString ? String(customQrString).trim() : null
     });
 
     ctx.auditRepo.log({
@@ -558,13 +574,55 @@ export function registerAdminRoutes(server, ctx) {
       details: {
         upiId: account.upiId,
         payeeName: account.payeeName,
-        isActive: account.isActive
+        isActive: account.isActive,
+        dailyTransactionLimit: account.dailyTransactionLimit,
+        priority: account.priority
       }
     });
 
     HttpServer.json(res, 201, {
       success: true,
       account
+    });
+  });
+
+  // PATCH /api/v1/admin/upi-accounts/:id (Update account limits, priority, name, or custom QR)
+  server.patch('/api/v1/admin/upi-accounts/:id', async (req, res, params) => {
+    const account = ctx.accountRepo.findById(params.id);
+    if (!account) {
+      HttpServer.json(res, 404, { error: `UPI Account not found: ${params.id}` });
+      return;
+    }
+
+    const body = await HttpServer.parseBody(req);
+    const updates = {};
+    if (body.payeeName !== undefined) updates.payeeName = body.payeeName;
+    if (body.upiId !== undefined) {
+      if (!isValidVpa(body.upiId.trim()) && !body.customQrString && !/^[a-zA-Z0-9.\-_]{2,256}(@[a-zA-Z0-9.\-_]{2,64})?$/.test(body.upiId.trim())) {
+        HttpServer.json(res, 400, { error: `Invalid UPI VPA format: "${body.upiId}"` });
+        return;
+      }
+      updates.upiId = body.upiId.trim();
+    }
+    if (body.isMerchantEnabled !== undefined) updates.isMerchantEnabled = Boolean(body.isMerchantEnabled);
+    if (body.dailyTransactionLimit !== undefined) updates.dailyTransactionLimit = Number(body.dailyTransactionLimit);
+    if (body.priority !== undefined) updates.priority = Number(body.priority);
+    if (body.customQrString !== undefined) updates.customQrString = body.customQrString ? String(body.customQrString).trim() : null;
+
+    const updated = ctx.accountRepo.updateAccount(account.id, updates);
+
+    ctx.auditRepo.log({
+      merchantId: account.merchantId,
+      entityType: 'PAYMENT_RECEIVING_ACCOUNT',
+      entityId: account.id,
+      action: 'RECEIVING_UPI_UPDATED',
+      actorType: AuditActorType.ADMIN,
+      details: updates
+    });
+
+    HttpServer.json(res, 200, {
+      success: true,
+      account: updated
     });
   });
 

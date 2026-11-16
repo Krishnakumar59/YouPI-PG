@@ -83,6 +83,14 @@ export class HttpServer {
     this.register('POST', pattern, handler);
   }
 
+  put(pattern, handler) {
+    this.register('PUT', pattern, handler);
+  }
+
+  patch(pattern, handler) {
+    this.register('PATCH', pattern, handler);
+  }
+
   delete(pattern, handler) {
     this.register('DELETE', pattern, handler);
   }
