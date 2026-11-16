@@ -707,6 +707,7 @@ export function registerCheckoutRoutes(server, ctx) {
       upiMode,
       upiServerIndicator,
       receivingAccountId: receivingAccount?.id || snapshot?.id || null,
+      customQrString: snapshot?.customQrString || receivingAccount?.customQrString || null,
       providers: UPI_PROVIDERS,
       canClickPaymentDone: session.status === PaymentStatus.ACTIVE,
       returnUrl: session.returnUrl,
@@ -1323,8 +1324,10 @@ export function registerCheckoutRoutes(server, ctx) {
         ctx.timingEngine.cancelActiveTimer(session.id);
       }
 
-      // Re-resolve active receiving account and enqueue/activate into UPI queue
-      const receivingAccount = ctx.accountRepo.findActiveForMerchant(session.merchantId);
+      // Re-resolve active receiving account and enqueue/activate into UPI queue with auto rotation
+      const receivingAccount = ctx.accountRepo.findOrRotateActiveAccount
+        ? ctx.accountRepo.findOrRotateActiveAccount(session.merchantId)
+        : ctx.accountRepo.findActiveForMerchant(session.merchantId);
       if (receivingAccount) {
         const queueResult = ctx.queueEngine.enqueueOrActivate(session.id, receivingAccount.id);
         updates += `, receiving_account_id = ?, status = ?, queue_position = ?, expires_at = ?`;

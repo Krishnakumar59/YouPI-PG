@@ -11,8 +11,8 @@ import { toPaise } from '@youpi/common';
 export function extractIntelligentAmount(text) {
   if (!text || typeof text !== 'string') return null;
 
-  // Pattern 1: Standard currency prefix (e.g. Rs. 20.00, Rs 200, INR 500.00, ₹1,200.50, ₹20)
-  const prefixMatch = text.match(/(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)/i);
+  // Pattern 1: Standard currency prefix (e.g. Rs. 20.00, Rs 200, INR 500.00, NPR 500, ₹1,200.50, ₹20)
+  const prefixMatch = text.match(/(?:rs\.?|inr|npr|₹)\s*([\d,]+(?:\.\d{1,2})?)/i);
   if (prefixMatch && prefixMatch[1]) {
     const clean = prefixMatch[1].replace(/,/g, '');
     try {
@@ -20,8 +20,8 @@ export function extractIntelligentAmount(text) {
     } catch {}
   }
 
-  // Pattern 2: Standard currency suffix (e.g. 20.00 Rs, 20.00 INR, 20rs, 500 inr)
-  const suffixMatch = text.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:rs\.?|inr|₹)/i);
+  // Pattern 2: Standard currency suffix (e.g. 20.00 Rs, 20.00 INR, 20.00 NPR, 20rs, 500 inr)
+  const suffixMatch = text.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:rs\.?|inr|npr|₹)/i);
   if (suffixMatch && suffixMatch[1]) {
     const clean = suffixMatch[1].replace(/,/g, '');
     try {
@@ -81,7 +81,7 @@ export class BankSmsParser {
     if (!text) return null;
 
     // Check if SMS represents an incoming credit
-    const creditKeywords = /(credited|received|deposit|payment received|payment|upi\/cr|transferred)/i;
+    const creditKeywords = /(credited|received|deposit|payment received|payment|upi\/cr|fonepay|esewa|khalti|transferred)/i;
     if (!creditKeywords.test(text)) {
       return null;
     }
@@ -97,19 +97,19 @@ export class BankSmsParser {
       return null;
     }
 
-    // 2. Extract Bank Reference / UTR / RRN
+    // 2. Extract Bank Reference / UTR / RRN (including Fonepay Trace, eSewa, Khalti Txn ID)
     let bankRef;
-    const refMatch = text.match(/(?:utr|ref(?:\s*no)?|txn(?:\s*id)?|rrn)[:\s#]+([a-zA-Z0-9\-_]{6,35})/i);
+    const refMatch = text.match(/(?:utr|trace(?:\s*id)?|ref(?:\s*no)?|txn(?:\s*id)?|rrn)[:\s#]+([a-zA-Z0-9\-_]{6,35})/i);
     if (refMatch && refMatch[1]) {
       bankRef = refMatch[1].trim();
     } else {
-      const upiCrMatch = text.match(/UPI\/CR\/([a-zA-Z0-9\-_]+)/i);
+      const upiCrMatch = text.match(/(?:UPI|FONEPAY)\/CR\/([a-zA-Z0-9\-_]+)/i);
       if (upiCrMatch && upiCrMatch[1]) {
         bankRef = upiCrMatch[1].trim();
       }
     }
 
-    // 3. Extract Sender VPA
+    // 3. Extract Sender VPA or Phone Number
     let senderVpa;
     let vpaMatch = text.match(/(?:from|by)\s+([a-zA-Z0-9.\-_]{2,100}@[a-zA-Z0-9.\-_]{2,64})/i);
     if (!vpaMatch) {
@@ -117,6 +117,11 @@ export class BankSmsParser {
     }
     if (vpaMatch && vpaMatch[1]) {
       senderVpa = vpaMatch[1].trim().replace(/[.,;]+$/, '');
+    } else {
+      const phoneMatch = text.match(/(?:from|by)\s+(?:[a-zA-Z\s]+\b\s*[\(\[])?(\+?977[- ]?)?(9[78]\d{8})/i);
+      if (phoneMatch && phoneMatch[2]) {
+        senderVpa = phoneMatch[2].trim();
+      }
     }
 
     // 4. Timestamp

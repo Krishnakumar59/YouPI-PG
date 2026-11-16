@@ -114,6 +114,19 @@ describe('Database Schema Parity & Integrity (Postgres vs SQLite) (#13)', () => 
     }
   });
 
+  test('payment_receiving_accounts table has daily transaction limit, priority and custom_qr_string in both schemas', () => {
+    const requiredCols = [
+      'daily_transaction_limit',
+      'priority',
+      'custom_qr_string'
+    ];
+
+    for (const col of requiredCols) {
+      assert.ok(pgSchema.includes(col), `schema.sql payment_receiving_accounts missing column: ${col}`);
+      assert.ok(sqliteSchema.includes(col), `sqlite-schema.sql payment_receiving_accounts missing column: ${col}`);
+    }
+  });
+
   test('sqlite-schema.sql executes cleanly and creates complete schema on fresh database', () => {
     const db = new Database({ inMemory: true, autoMigrate: false });
     try {

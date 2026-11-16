@@ -286,8 +286,10 @@ export function registerPaymentRoutes(server, ctx) {
     let receivingAccountId = null;
     let receivingAccountSnapshot = null;
     if (!isCounterPayment) {
-      // Resolve active receiving account for UPI
-      const receivingAccount = ctx.accountRepo.findActiveForMerchant(merchant.id);
+      // Resolve active receiving account for UPI with automatic daily limit rotation
+      const receivingAccount = ctx.accountRepo.findOrRotateActiveAccount
+        ? ctx.accountRepo.findOrRotateActiveAccount(merchant.id)
+        : ctx.accountRepo.findActiveForMerchant(merchant.id);
       if (!receivingAccount) {
         HttpServer.json(res, 500, { error: 'No active UPI receiving account configured for merchant.' });
         return;
@@ -297,7 +299,8 @@ export function registerPaymentRoutes(server, ctx) {
         id: receivingAccount.id,
         upiId: receivingAccount.upiId,
         payeeName: receivingAccount.payeeName,
-        isMerchantEnabled: receivingAccount.isMerchantEnabled
+        isMerchantEnabled: receivingAccount.isMerchantEnabled,
+        customQrString: receivingAccount.customQrString || null
       };
     }
 

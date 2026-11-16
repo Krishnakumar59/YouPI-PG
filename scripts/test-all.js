@@ -19,6 +19,7 @@ const testFiles = [
   'packages/core/src/__tests__/webhook-engine.test.js',
 'packages/core/src/__tests__/webhook-outbox-outcomes.test.js',
   'packages/core/src/__tests__/webhook-outbox-durability.test.js',
+  'packages/core/src/__tests__/nepal-bank-sms-parser.test.js',
   'packages/core/src/__tests__/statement-reconciliation.test.js',
   'packages/merchant-sdk/src/__tests__/merchant-sdk.test.js',
   'packages/merchant-sdk/src/__tests__/youpi-universal-integration.test.js',
@@ -57,6 +58,7 @@ const testFiles = [
   'apps/payment-api/src/__tests__/cod-parallel-timer-decoupling.test.js',
   'apps/payment-api/src/__tests__/gateway-hardening-invariants.test.js',
   'apps/payment-api/src/__tests__/observer-poller.test.js',
+  'apps/payment-api/src/__tests__/account-pool-rotation.test.js',
   'scripts/chaos-concurrency.test.js',
   'scripts/production-infrastructure.test.js',
   'scripts/dev-env.test.js'

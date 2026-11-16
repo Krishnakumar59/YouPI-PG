@@ -215,6 +215,71 @@ describe('2-Level Verification (SMS Gateway + Gmail) & Queue Management Tests', 
     assert.equal(sUpdated.verificationLevel, 2);
   });
 
+  test('Android SMS Gateway processes Nepali Fonepay / Bank SMS and completes payment', async () => {
+    // 1. Get pairing QR from admin
+    const qrRes = await authFetch(`${baseUrl}/api/v1/admin/sms-gateway/pair-qr`);
+    assert.equal(qrRes.status, 200);
+    const qrData = await qrRes.json();
+
+    // 2. Mobile app pairs
+    const pairRes = await authFetch(`${baseUrl}/api/v1/observers/sms/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enrollmentToken: qrData.enrollmentToken,
+        deviceName: 'Nepal Xiaomi Redmi Observer'
+      })
+    });
+    assert.equal(pairRes.status, 200);
+    const pairData = await pairRes.json();
+
+    // 3. Create active payment session for NPR 1,200 (120000 paise)
+    const sessionRepo = apiInstance.app.context.sessionRepo;
+    const receivingAccountId = '00000000-0000-0000-0000-000000000002';
+    const sNp = sessionRepo.create({
+      merchantId: '00000000-0000-0000-0000-000000000001',
+      receivingAccountId,
+      orderId: 'ORD-NP-FONEPAY-1200',
+      amountPaise: 120000n,
+      currency: 'NPR'
+    });
+    testDb.execute("UPDATE payment_receiving_accounts SET is_slot_busy = 0, current_active_session_id = NULL WHERE id = ?", [receivingAccountId]);
+    apiInstance.app.context.queueEngine.enqueueOrActivate(sNp.id, receivingAccountId);
+
+    // 4. Mobile app captures authentic Nepali bank SMS and posts
+    const timestamp = Date.now();
+    const smsPayload = {
+      deviceId: pairData.deviceId,
+      sender: 'NABIL_ALERT',
+      body: 'Your A/C ...1234 has been credited with NPR 1,200.00 on 16-Nov-2026 by Fonepay. Ref: FP99881122. Avl Bal NPR 45,000.00',
+      timestamp
+    };
+    const bodyStr = JSON.stringify(smsPayload);
+    const sigPayload = `${bodyStr}:${timestamp}`;
+    const signature = crypto.createHmac('sha256', pairData.signingKey).update(sigPayload).digest('hex');
+
+    const smsRes = await authFetch(`${baseUrl}/api/v1/observers/sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-Id': pairData.deviceId,
+        'X-Timestamp': timestamp.toString(),
+        'X-Signature': signature
+      },
+      body: bodyStr
+    });
+
+    assert.equal(smsRes.status, 200);
+    const smsResult = await smsRes.json();
+    assert.equal(smsResult.accepted, true);
+    assert.equal(smsResult.attribution.attributed, true);
+    assert.equal(smsResult.attribution.paymentSessionId, sNp.id);
+    assert.equal(smsResult.attribution.outcomeStatus, PaymentStatus.OBSERVED_SUCCESS);
+
+    const sUpdated = sessionRepo.findById(sNp.id);
+    assert.equal(sUpdated.status, PaymentStatus.OBSERVED_SUCCESS);
+  });
+
   test('Gmail credentials can be saved and connection tested via Admin API', async () => {
     const saveRes = await authFetch(`${baseUrl}/api/v1/admin/gmail/credentials`, {
       method: 'POST',

@@ -208,28 +208,73 @@ describe('Android Payment Observer Integration Tests', () => {
     assert.equal(rejectedRes.body.clientMessageId, rejectedMsgId);
   });
 
+  test('submits valid Nepali eSewa observation and confirms payment session', async () => {
+    await ensurePaired();
+    resetReceivingSlot();
+
+    // 1. Create and activate a payment session for Rs. 650 (65000 paise)
+    const session = apiInstance.app.context.sessionRepo.create({
+      merchantId: '00000000-0000-0000-0000-000000000001',
+      receivingAccountId: '00000000-0000-0000-0000-000000000002',
+      orderId: 'NP-ESEWA-650',
+      amountPaise: 65000n,
+      currency: 'NPR'
+    });
+
+    apiInstance.app.context.queueEngine.enqueueOrActivate(session.id, '00000000-0000-0000-0000-000000000002');
+    apiInstance.app.context.timingEngine.handlePaymentDone(session.id);
+
+    // 2. Observer submits observation from com.f1soft.esewa
+    const res = await driver.submitObservation({
+      amount: '650.00',
+      receivingAccountId: '00000000-0000-0000-0000-000000000002',
+      utr: 'ESW99887766',
+      senderVpa: '9801234567',
+      package: 'com.f1soft.esewa',
+      notificationText: 'Received Rs. 650.00 from 9801234567. Remarks: NP-ESEWA-650. Txn ID: ESW99887766'
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.accepted, true);
+    assert.equal(res.body.attribution.attributed, true);
+    assert.equal(res.body.attribution.paymentSessionId, session.id);
+    assert.equal(res.body.attribution.outcomeStatus, PaymentStatus.OBSERVED_SUCCESS);
+
+    // 3. Verify session in DB updated to OBSERVED_SUCCESS
+    const updated = apiInstance.app.context.sessionRepo.findById(session.id);
+    assert.equal(updated.status, PaymentStatus.OBSERVED_SUCCESS);
+  });
+
   test('on-device bank SMS filter logic validates institutional senders and rejects personal numbers', () => {
-    const INSTITUTIONAL_SENDER_PATTERN = /^(?:[A-Za-z]{2}-)?([A-Za-z0-9]{3,9})$/;
+    const INSTITUTIONAL_SENDER_PATTERN = /^(?:[A-Za-z]{2}-)?([A-Za-z0-9_]{3,15})$/;
     const NUMERIC_PHONE_PATTERN = /^\+?[0-9]{7,15}$/;
-    const CREDIT_KEYWORD_PATTERN = /(?:credited|received|deposit(?:ed)?|payment\s+received|transferred\s+to\s+your|has\s+transferred|deposited\s+in|cr\b|upi\s+credit)/i;
+    const CREDIT_KEYWORD_PATTERN = /(?:credited|received|deposit(?:ed)?|payment\s+received|transferred\s+to\s+your|has\s+transferred|deposited\s+in|cr\b|upi\s+credit|fonepay|esewa|khalti)/i;
     const EXPLICIT_DEBIT_PATTERN = /(?:debited\b|spent\s+on|paid\s+to|withdrawn\s+from|dr\b|payment\s+sent)/i;
 
-    // Test institutional senders
+    // Test institutional senders (India & Nepal)
     assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('VK-HDFCBK'));
     assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('AD-SBIINB'));
     assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('BZ-ICICIB'));
     assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('VM-AXISBK'));
     assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('HDFCBK'));
+    assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('eSewa'));
+    assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('Khalti'));
+    assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('Fonepay'));
+    assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('NIC_ASIA'));
+    assert.ok(INSTITUTIONAL_SENDER_PATTERN.test('NABIL'));
 
     // Test rejection of personal phone numbers
     assert.ok(NUMERIC_PHONE_PATTERN.test('+919876543210'));
     assert.ok(NUMERIC_PHONE_PATTERN.test('9876543210'));
+    assert.ok(NUMERIC_PHONE_PATTERN.test('+9779801234567'));
     assert.ok(NUMERIC_PHONE_PATTERN.test('+14155552671'));
 
     // Test credit vs debit intent
     const creditSms = 'INR 500.00 credited to your A/C ending 4321 via UPI';
+    const nepalCreditSms = 'Received Rs. 500.00 from 9801234567 via eSewa';
     const debitSms = 'INR 500.00 debited from your A/C ending 4321 towards Amazon';
     assert.ok(CREDIT_KEYWORD_PATTERN.test(creditSms));
+    assert.ok(CREDIT_KEYWORD_PATTERN.test(nepalCreditSms));
     assert.ok(EXPLICIT_DEBIT_PATTERN.test(debitSms));
   });
 });

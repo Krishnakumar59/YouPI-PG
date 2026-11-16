@@ -1924,13 +1924,12 @@
 
           <!-- Add New VPA Section -->
           <div class="settings-group-box">
-            <h4 style="margin-bottom:0.85rem; font-size:0.95rem; color:var(--text-heading);">➕ Add New Receiving UPI VPA
+            <h4 style="margin-bottom:0.85rem; font-size:0.95rem; color:var(--text-heading);">➕ Add New Receiving UPI / Wallet Account
             </h4>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
               <div>
-                <label style="display:block; font-size:0.82rem; font-weight:700; margin-bottom:0.3rem;">UPI ID /
-                  VPA</label>
-                <input id="newUpiVpa" type="text" placeholder="e.g. 9876543210@axl or merchant@okhdfcbank"
+                <label style="display:block; font-size:0.82rem; font-weight:700; margin-bottom:0.3rem;">UPI ID / Wallet ID</label>
+                <input id="newUpiVpa" type="text" placeholder="e.g. 9876543210@axl, 9801234567@esewa, or merchant@okhdfcbank"
                   style="width:100%;" />
               </div>
               <div>
@@ -1939,28 +1938,42 @@
                 <input id="newUpiPayee" type="text" placeholder="e.g. YOUPI Store or Store Name" style="width:100%;" />
               </div>
             </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:1rem; margin-bottom:1rem;">
+              <div>
+                <label style="display:block; font-size:0.82rem; font-weight:700; margin-bottom:0.3rem;">Daily Transaction Limit (0 = Unlimited)</label>
+                <input id="newUpiDailyLimit" type="number" min="0" value="50" style="width:100%;" title="NRB personal wallet threshold: 50 payments/day" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.82rem; font-weight:700; margin-bottom:0.3rem;">Rotation Priority</label>
+                <input id="newUpiPriority" type="number" value="0" style="width:100%;" title="Higher priority accounts are selected first when multiple have capacity" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.82rem; font-weight:700; margin-bottom:0.3rem;">Custom QR String / ConnectIPS (Optional)</label>
+                <input id="newUpiCustomQr" type="text" placeholder="Optional raw EMVCo ConnectIPS or QR string" style="width:100%;" />
+              </div>
+            </div>
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
               <label
                 style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; font-weight:600; cursor:pointer;">
                 <input type="checkbox" id="newUpiActivateNow" checked style="width:16px; height:16px;" />
-                <span>Set as active VPA for customer checkout immediately</span>
+                <span>Set as active receiving account for customer checkout immediately</span>
               </label>
-              <button class="btn btn-primary" onclick="addNewUpiAccount()">➕ Save &amp; Add UPI Account</button>
+              <button class="btn btn-primary" onclick="addNewUpiAccount()">➕ Save &amp; Add Account</button>
             </div>
           </div>
 
           <!-- Saved VPAs Table -->
-          <h4 style="margin-bottom:0.75rem; font-size:0.95rem; color:var(--text-heading);">📋 Saved Receiving UPI
-            Accounts</h4>
+          <h4 style="margin-bottom:0.75rem; font-size:0.95rem; color:var(--text-heading);">📋 Saved Receiving Accounts &amp; Auto-Rotation Pool</h4>
           <div style="overflow-x:auto;">
             <table>
               <thead>
                 <tr>
-                  <th>UPI ID (VPA)</th>
+                  <th>Account / VPA</th>
                   <th>Payee Name</th>
-                  <th>Gateway Status</th>
+                  <th>Status</th>
+                  <th>Today's Count</th>
+                  <th>Priority</th>
                   <th>Slot State</th>
-                  <th>Created</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -5171,18 +5184,28 @@
       const tbody = document.getElementById('upiAccountsTableBody');
       if (!tbody) return;
       if (!accounts || accounts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No UPI accounts saved yet. Add your first VPA above.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No receiving accounts saved yet. Add your first account above.</td></tr>';
         return;
       }
 
       tbody.innerHTML = accounts.map(a => {
         const statusBadge = a.isActive
           ? '<span class="badge badge-info" style="font-weight:800; font-size:0.78rem;">● ACTIVE</span>'
-          : '<span class="badge badge-neutral" style="font-size:0.75rem;">Disabled</span>';
+          : '<span class="badge badge-neutral" style="font-size:0.75rem;">Standby</span>';
 
         const slotBadge = a.isSlotBusy
           ? '<span class="badge badge-warning" style="font-size:0.7rem;">Slot Busy</span>'
-          : '<span style="color:var(--text-muted); font-size:0.75rem;">Available</span>';
+          : '<span style="color:var(--text-muted); font-size:0.75rem;">Idle</span>';
+
+        const countBadge = a.isExhausted
+          ? `<span class="badge badge-danger" style="font-size:0.72rem; font-weight:700;">${a.completedToday || 0} / ${a.dailyTransactionLimit} (LIMIT REACHED)</span>`
+          : (a.dailyTransactionLimit > 0
+            ? `<span class="badge badge-success" style="font-size:0.72rem;">${a.completedToday || 0} / ${a.dailyTransactionLimit}</span>`
+            : `<span style="font-size:0.72rem; color:var(--text-muted);">${a.completedToday || 0} (Unlimited)</span>`);
+
+        const qrIndicator = a.customQrString
+          ? `<div style="font-size:0.7rem; color:var(--text-muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(a.customQrString)}">QR: ${escapeHtml(a.customQrString)}</div>`
+          : '';
 
         let actionBtns = '';
         if (!a.isActive) {
@@ -5194,11 +5217,15 @@
 
         return `
         <tr style="${a.isActive ? 'background:var(--primary-light);' : ''}">
-          <td><strong style="color:var(--text-heading);">${escapeHtml(a.upiId)}</strong></td>
+          <td>
+            <strong style="color:var(--text-heading);">${escapeHtml(a.upiId)}</strong>
+            ${qrIndicator}
+          </td>
           <td>${escapeHtml(a.payeeName)}</td>
           <td>${statusBadge}</td>
+          <td>${countBadge}</td>
+          <td style="font-size:0.8rem; font-weight:600;">${a.priority || 0}</td>
           <td>${slotBadge}</td>
-          <td style="font-size:0.75rem; color:var(--text-muted);">${new Date(a.createdAt).toLocaleDateString()}</td>
           <td>${actionBtns}</td>
         </tr>
       `;
@@ -5208,26 +5235,37 @@
     async function addNewUpiAccount() {
       const upiId = document.getElementById('newUpiVpa').value.trim();
       const payeeName = document.getElementById('newUpiPayee').value.trim();
+      const dailyTransactionLimit = Number(document.getElementById('newUpiDailyLimit')?.value || 50);
+      const priority = Number(document.getElementById('newUpiPriority')?.value || 0);
+      const customQrString = (document.getElementById('newUpiCustomQr')?.value || '').trim();
       const isActive = document.getElementById('newUpiActivateNow').checked;
-      if (!upiId) return alert('Please enter a valid UPI VPA.');
+      if (!upiId) return alert('Please enter a valid UPI VPA or wallet ID.');
 
       try {
         const res = await fetch(`${API_BASE}/api/v1/admin/upi-accounts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ upiId, payeeName: payeeName || document.getElementById('settingBusinessName').value, isActive })
+          body: JSON.stringify({
+            upiId,
+            payeeName: payeeName || document.getElementById('settingBusinessName').value,
+            isActive,
+            dailyTransactionLimit,
+            priority,
+            customQrString: customQrString || undefined
+          })
         });
         const data = await res.json();
         if (res.ok) {
-          showAdminToast(`UPI account "${data.account.upiId}" added successfully!`);
+          showAdminToast(`Account "${data.account.upiId}" added successfully!`);
           document.getElementById('newUpiVpa').value = '';
           document.getElementById('newUpiPayee').value = '';
+          if (document.getElementById('newUpiCustomQr')) document.getElementById('newUpiCustomQr').value = '';
           fetchGatewaySettings();
         } else {
-          alert(data.error || 'Failed to add UPI account');
+          alert(data.error || 'Failed to add account');
         }
       } catch (e) {
-        alert('Network error adding UPI account');
+        alert('Network error adding account');
       }
     }
 

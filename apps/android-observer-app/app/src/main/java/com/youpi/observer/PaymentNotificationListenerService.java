@@ -25,6 +25,13 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         "com.csam.icici.bank.imobile",
         "com.dreamplug.androidapp",
         "com.epifi.paisa",
+        "com.f1soft.esewa",
+        "com.f1soft.everestbank",
+        "com.f1soft.fonepay",
+        "com.f1soft.fonepay.merchant",
+        "com.f1soft.globalbank",
+        "com.f1soft.nicasiabank",
+        "com.f1soft.sanima",
         "com.fampay.in",
         "com.fedmobile",
         "com.fisglobal.bandhanupi.app",
@@ -36,6 +43,7 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         "com.idfcfirstbank.optimus",
         "com.infrasoft.uboi",
         "com.infrasofttech.indianbank",
+        "com.khalti",
         "com.mgs.induspsp",
         "com.mobikwik_new",
         "com.msf.kbank.mobile",
@@ -55,11 +63,13 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         "in.org.npci.upiapp",
         "indwin.c3.shareapp",
         "money.jupiter",
-        "net.one97.paytm"
+        "net.one97.paytm",
+        "np.com.nabilbank.nabilmobile",
+        "np.com.nchl.connectips"
     ));
 
-    private static final Pattern AMOUNT_PATTERN = Pattern.compile("(?:Rs\\.?|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern UTR_PATTERN = Pattern.compile("(?:UPI\\s*(?:ref|reference|txn|id)?|Ref(?:erence)?\\s*(?:no|number)?|UTR)\\s*[:#-]?\\s*([0-9]{12})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern AMOUNT_PATTERN = Pattern.compile("(?:Rs\\.?|NPR|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern UTR_PATTERN = Pattern.compile("(?:UPI\\s*(?:ref|reference|txn|id)?|Trace(?:\\s*(?:id|no|#))?|Ref(?:erence)?\\s*(?:no|number)?|UTR|Txn\\s*(?:id|#)?|Fonepay\\s*(?:ref|trace)?)\\s*[:#-]?\\s*([a-zA-Z0-9\\-_]{6,35})", Pattern.CASE_INSENSITIVE);
     private static final Pattern VPA_PATTERN = Pattern.compile("([a-zA-Z0-9._-]+@[a-zA-Z0-9]+)");
 
     @Override

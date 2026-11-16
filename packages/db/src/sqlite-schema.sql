@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS payment_receiving_accounts (
     is_active INTEGER NOT NULL DEFAULT 1,
     is_slot_busy INTEGER NOT NULL DEFAULT 0,
     current_active_session_id TEXT,
+    daily_transaction_limit INTEGER NOT NULL DEFAULT 50,
+    priority INTEGER NOT NULL DEFAULT 0,
+    custom_qr_string TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

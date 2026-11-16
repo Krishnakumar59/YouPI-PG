@@ -363,7 +363,18 @@ export const BANKING_AND_MESSAGING_PACKAGES = Object.freeze([
   'com.hdfcbank.payzapp',
   'com.bankofbaroda.mconnect',
   'com.infrasofttech.indianbank',
-  'com.fedmobile'
+  'com.fedmobile',
+  // Verified Nepal Digital Wallets & Mobile Banking Packages
+  'com.f1soft.esewa',
+  'com.khalti',
+  'com.f1soft.fonepay.merchant',
+  'com.f1soft.fonepay',
+  'np.com.nabilbank.nabilmobile',
+  'com.f1soft.nicasiabank',
+  'com.f1soft.globalbank',
+  'com.f1soft.sanima',
+  'com.f1soft.everestbank',
+  'np.com.nchl.connectips'
 ]);
 
 /**

@@ -19,14 +19,14 @@ export function extractIntelligentAmount(text) {
   // spaces the scan is linear and the cost is bounded by the length of the text.
   const normalizedText = text.replace(/\s+/g, ' ');
 
-  // 0. Remove balance mentions (e.g. "Avl Bal Rs 10,000", "Bal: INR 5000", "Available limit Rs. 20,000")
+  // 0. Remove balance mentions (e.g. "Avl Bal Rs 10,000", "Bal: INR 5000", "Available limit Rs. 20,000", "Avl Bal NPR 25,000")
   // to avoid extracting account balance instead of credit amount.
-  const balancePattern = /(?:(?:avl|avail|available|tot|total|ledger|clear|curr|current)(?:\s+(?:bal|balance|limit))?|bal|balance)\b[\s:=-]*(?:(?:rs\.?|inr|₹)\s*)?\b\d[\d,]{0,15}(?:\.\d{1,2})?/gi;
+  const balancePattern = /(?:(?:avl|avail|available|tot|total|ledger|clear|curr|current)(?:\s+(?:bal|balance|limit))?|bal|balance)\b[\s:=-]*(?:(?:rs\.?|inr|npr|₹)\s*)?\b\d[\d,]{0,15}(?:\.\d{1,2})?/gi;
   const sanitizedText = normalizedText.replace(balancePattern, ' ').trim();
 
-  // Pattern 0: Direct credit proximity phrases (e.g. "credited with Rs. 500", "received ₹200.00", "Rs 499.00 credited")
-  const directCreditMatch = sanitizedText.match(/(?:credited\s*(?:with|by|for)?|received|deposit(?:ed)?)\s*[:=-]?\s*(?:(?:rs\b\.?|inr\b)|₹)?[\s:=-]*([\d,]+(?:\.\d{1,2})?)/i) ||
-    sanitizedText.match(/(?:(?:rs\b\.?|inr\b)|₹)[\s:=-]*([\d,]+(?:\.\d{1,2})?)\s*(?:(?:has\s+been|is)\s+)?(?:credited|received|deposited)/i);
+  // Pattern 0: Direct credit proximity phrases (e.g. "credited with Rs. 500", "received ₹200.00", "Rs 499.00 credited", "NPR 500.00 credited")
+  const directCreditMatch = sanitizedText.match(/(?:credited\s*(?:with|by|for)?|received|deposit(?:ed)?)\s*[:=-]?\s*(?:(?:rs\b\.?|inr\b|npr\b)|₹)?[\s:=-]*([\d,]+(?:\.\d{1,2})?)/i) ||
+    sanitizedText.match(/(?:(?:rs\b\.?|inr\b|npr\b)|₹)[\s:=-]*([\d,]+(?:\.\d{1,2})?)\s*(?:(?:has\s+been|is)\s+)?(?:credited|received|deposited)/i);
   if (directCreditMatch && (directCreditMatch[1] || directCreditMatch[2])) {
     const clean = (directCreditMatch[1] || directCreditMatch[2]).replace(/,/g, '');
     try {
@@ -34,8 +34,8 @@ export function extractIntelligentAmount(text) {
     } catch {}
   }
 
-  // Pattern 1: Standard currency prefix on sanitized text (e.g. Rs 499, Rs. 499, ₹499, INR 499, Rs. 20.00, ₹1,200.50)
-  const prefixMatch = sanitizedText.match(/(?:(?:rs\b\.?|inr\b)|₹)[\s:=-]*([\d,]+(?:\.\d{1,2})?)/i);
+  // Pattern 1: Standard currency prefix on sanitized text (e.g. Rs 499, Rs. 499, ₹499, INR 499, NPR 500, Rs. 20.00, ₹1,200.50)
+  const prefixMatch = sanitizedText.match(/(?:(?:rs\b\.?|inr\b|npr\b)|₹)[\s:=-]*([\d,]+(?:\.\d{1,2})?)/i);
   if (prefixMatch && prefixMatch[1]) {
     const clean = prefixMatch[1].replace(/,/g, '');
     try {
@@ -43,8 +43,8 @@ export function extractIntelligentAmount(text) {
     } catch {}
   }
 
-  // Pattern 2: Standard currency suffix on sanitized text (e.g. 499 Rs, 499.00 INR, 20.00 Rs, 20rs, 500 inr)
-  const suffixMatch = sanitizedText.match(/(?:^|[^\w.])([\d,]+(?:\.\d{1,2})?)[\s:=-]*(?:(?:rs\b\.?|inr\b)|₹)/i);
+  // Pattern 2: Standard currency suffix on sanitized text (e.g. 499 Rs, 499.00 INR, 500.00 NPR, 20.00 Rs, 20rs, 500 inr)
+  const suffixMatch = sanitizedText.match(/(?:^|[^\w.])([\d,]+(?:\.\d{1,2})?)[\s:=-]*(?:(?:rs\b\.?|inr\b|npr\b)|₹)/i);
   if (suffixMatch && suffixMatch[1]) {
     const clean = suffixMatch[1].replace(/,/g, '');
     try {
@@ -109,11 +109,12 @@ export class BankSmsParser {
 
     // Check if SMS represents an incoming credit. A bare "payment" or "transferred" without
     // credit context is rejected, but "transferred to your account" and "payment of Rs 500"
-    // are genuine credits and must still be recognised.
+    // are genuine credits and must still be recognised. Supports UPI, Fonepay, eSewa, and Khalti.
     const creditKeywords = new RegExp(
       '\\b(?:credited|received|deposit(?:ed)?|payment\\s+received|money\\s+received|upi\\/cr' +
+      '|fonepay(?:\\/cr)?|esewa(?:\\/cr)?|khalti(?:\\/cr)?' +
       '|transferred\\s+to\\s+(?:your\\s+)?(?:a\\/c|account|wallet)' +
-      '|payment\\s+of\\s+(?:(?:rs\\b\\.?|inr\\b)\\s*)?[\\d,.]+\\s+(?:has\\s+been\\s+)?made\\s+to\\s+(?:your\\s+)?(?:a\\/c|account|wallet)' +
+      '|payment\\s+of\\s+(?:(?:rs\\b\\.?|inr\\b|npr\\b)\\s*)?[\\d,.]+\\s+(?:has\\s+been\\s+)?made\\s+to\\s+(?:your\\s+)?(?:a\\/c|account|wallet)' +
       '|added\\s+to\\s+(?:your\\s+)?(?:account|wallet))\\b',
       'i'
     );
@@ -138,11 +139,12 @@ export class BankSmsParser {
       return null;
     }
 
-    // 2. Extract Bank Reference / UTR / RRN (including FamPay Transaction IDs)
+    // 2. Extract Bank Reference / UTR / RRN (including Fonepay, eSewa, Khalti Trace IDs)
     let bankRef;
     const utrPatterns = [
-      /(?:upi\s*ref(?:erence)?\s*(?:no\.?|num)?|utr(?:\s*no\.?)?|rrn(?:\s*no\.?)?|txn\s*(?:id|ref|#)?|transaction\s*id|ref\s*no\.?)[\s:=-]+([a-zA-Z0-9\-_]{6,35})/i,
+      /(?:upi\s*ref(?:erence)?\s*(?:no\.?|num)?|utr(?:\s*no\.?)?|rrn(?:\s*no\.?)?|trace\s*(?:id|no\.?|#)?|txn\s*(?:id|ref|#)?|transaction\s*id|ref\s*(?:no\.?|id|#)?|fonepay\s*(?:trace|ref)|fpp(?:\s*id)?|esewa\s*txn\s*id|khalti\s*txn\s*id)[\s:=-]+([a-zA-Z0-9\-_]{6,35})/i,
       /(?:upi\/(?:[0-9]+\/|cr\/)([a-zA-Z0-9\-_]{6,35}))/i,
+      /(?:fonepay\/(?:[0-9]+\/|cr\/)([a-zA-Z0-9\-_]{6,35}))/i,
       /\b(?:ref(?:\s*(?:no\.?|id|#))?)[:\s#=-]+([a-zA-Z0-9\-_]{6,35})/i,
       /\b([0-9]{12})\b/
     ];
@@ -155,11 +157,16 @@ export class BankSmsParser {
       }
     }
 
-    // 3. Extract Sender VPA (including FamPay formats like "from Rahul (UPI ID: rahul@fam)")
+    // 3. Extract Sender VPA or Phone / Wallet ID (including Nepali mobile numbers 98XXXXXXXX)
     let senderVpa;
     const vpaMatch = text.match(/(?:from|by|vpa|upi\s*id)[\s:]+(?:[a-zA-Z\s]+[\(\[])?([a-zA-Z0-9.\-_]{2,64}@[a-zA-Z0-9.\-_]{2,32})/i);
     if (vpaMatch && vpaMatch[1]) {
       senderVpa = vpaMatch[1].trim().replace(/[.,;]+$/, '');
+    } else {
+      const phoneMatch = text.match(/(?:from|by)\s+(?:[a-zA-Z\s]+\b\s*[\(\[])?(\+?977[- ]?)?(9[78]\d{8})/i);
+      if (phoneMatch && phoneMatch[2]) {
+        senderVpa = phoneMatch[2].trim();
+      }
     }
 
     // 4. Resolve Observation Timestamp

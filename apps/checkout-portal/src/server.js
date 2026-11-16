@@ -508,14 +508,39 @@ export class CheckoutServer {
         return;
       }
 
-      // QR SVG: GET /checkout/:id/qr.svg (Direct from merchant receiving account)
+      // QR SVG: GET /checkout/:id/qr.svg (Direct from merchant receiving account or custom ConnectIPS QR)
       const qrMatch = pathname.match(/^\/checkout\/([^/]+)\/qr\.svg$/);
       if (qrMatch) {
         const paymentId = qrMatch[1];
         const state = await this.fetchPaymentState(paymentId);
-        const upiUri = state?.upiUri || `upi://pay?pa=${encodeURIComponent(state?.payeeVpa || 'merchant@upi')}&pn=${encodeURIComponent(state?.merchantName || 'Store')}&am=${encodeURIComponent(state?.amount || '100.00')}&tn=${encodeURIComponent(paymentId)}`;
 
-        const svg = generateQrSvg(upiUri, 220);
+        // Check for custom static QR image (e.g. data/custom-qr.png or data/custom-qr.jpg)
+        let customImageSvg = null;
+        for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+          const imgPath = path.resolve(__dirname, `../../../data/custom-qr.${ext}`);
+          if (fs.existsSync(imgPath)) {
+            const mime = ext === 'png' ? 'image/png' : (ext === 'webp' ? 'image/webp' : 'image/jpeg');
+            const b64 = fs.readFileSync(imgPath).toString('base64');
+            customImageSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" width="100%" height="100%"><rect width="220" height="220" fill="#ffffff" rx="8"/><image href="data:${mime};base64,${b64}" width="220" height="220" preserveAspectRatio="xMidYMid meet"/></svg>`;
+            break;
+          }
+        }
+
+        let svg;
+        if (customImageSvg) {
+          svg = customImageSvg;
+        } else {
+          let customQrText = (state?.customQrString || process.env.CUSTOM_QR_STRING || process.env.CONNECTIPS_QR_STRING || '').trim();
+          if (!customQrText) {
+            const txtPath = path.resolve(__dirname, '../../../data/custom-qr.txt');
+            if (fs.existsSync(txtPath)) {
+              customQrText = fs.readFileSync(txtPath, 'utf8').trim();
+            }
+          }
+          const textToEncode = customQrText || state?.upiUri || `upi://pay?pa=${encodeURIComponent(state?.payeeVpa || 'merchant@upi')}&pn=${encodeURIComponent(state?.merchantName || 'Store')}&am=${encodeURIComponent(state?.amount || '100.00')}&tn=${encodeURIComponent(paymentId)}`;
+          svg = generateQrSvg(textToEncode, 220);
+        }
+
         res.writeHead(200, {
           'Content-Type': 'image/svg+xml',
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
