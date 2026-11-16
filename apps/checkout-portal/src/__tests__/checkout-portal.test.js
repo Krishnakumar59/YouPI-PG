@@ -235,6 +235,23 @@ describe('Checkout Portal Integration Tests', () => {
       assert.ok(res.text.endsWith('</svg>'));
     });
 
+    test('GET /checkout/:id/qr.svg honors custom ConnectIPS QR text or image file if configured', async () => {
+      const origQr = process.env.CUSTOM_QR_STRING;
+      process.env.CUSTOM_QR_STRING = '00020101021229300012np.connectips0110TESTMERCH';
+      try {
+        const res = await get('/checkout/pay_test_uuid_nepal/qr.svg');
+        assert.equal(res.status, 200);
+        assert.ok(res.text.startsWith('<svg'));
+        assert.ok(res.text.endsWith('</svg>'));
+      } finally {
+        if (origQr !== undefined) {
+          process.env.CUSTOM_QR_STRING = origQr;
+        } else {
+          delete process.env.CUSTOM_QR_STRING;
+        }
+      }
+    });
+
     test('renders dynamic branding when DEFAULT_APP_NAME or merchant branding is configured', async () => {
       const origEnv = { ...process.env };
       process.env.DEFAULT_APP_NAME = 'CustomPay Gateway';
