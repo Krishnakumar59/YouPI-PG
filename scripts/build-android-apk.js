@@ -116,7 +116,7 @@ try {
     .map(f => `"${path.join(JAVA_DIR, f)}"`)
     .join(' ');
 
-  execSync(`"${JAVAC}" -encoding UTF-8 -cp ${classpath} -d "${BIN_DIR}" ${javaFiles}`, {
+  execSync(`"${JAVAC}" -source 17 -target 17 -encoding UTF-8 -cp ${classpath} -d "${BIN_DIR}" ${javaFiles}`, {
     stdio: 'inherit'
   });
   console.log('   ✅ Java compilation succeeded.');
